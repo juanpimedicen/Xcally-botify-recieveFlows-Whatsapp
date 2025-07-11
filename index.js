@@ -13,7 +13,7 @@ const now = () => new Date().toISOString();
 
 // Verificación del webhook (GET)
 app.get('/whatsapp/messages', (req, res) => {
-      const mode = req.query['hub.mode'];
+    const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
@@ -58,7 +58,7 @@ app.post('/whatsapp/messages', async (req, res) => {
         const DATOS = { nombre, rif, telefono, correo, from, timestamp: now() };
         guardarEnLog(DATOS);
 
-        const mensajeConfirmacion = `{nombre:"${nombre}",rif:"${rif}",teléfono:"${telefono}",correo_electrónico:"${correo}"}`;
+        const mensajeConfirmacion = `{ "nombre": "${nombre}", "rif": "${rif}", "telefono": "${telefono}", "correo": "${correo}" }`;
 
         const reenviarMensaje = {
             object: "whatsapp_business_account",
@@ -112,6 +112,7 @@ app.post('/whatsapp/messages', async (req, res) => {
                 }
             );
             console.log(`[${now()}] ✅ Respuesta del servidor:\n`, JSON.stringify(response.data, null, 2));
+            //console.log(`[${now()}] 🌐 Respuesta completa de axios:\n`, JSON.stringify(response, null, 2));
         } catch (err) {
             console.error(`[${now()}] ❌ Error al reenviar Flow:\n`, err.response?.data || err.message);
         }
@@ -136,6 +137,11 @@ app.post('/whatsapp/messages', async (req, res) => {
         }
     }
 });
+
+app.post("/botifyJSONner", (req, res) => {
+    console.log(req.body.clientData)
+    res.set('Content-Type', 'application/json').send(JSON.parse(req.body.clientData));
+})
 
 function guardarEnLog(datos) {
     let contenido = [];
