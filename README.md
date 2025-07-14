@@ -21,6 +21,13 @@ Este proyecto permite recibir y reenviar mensajes de WhatsApp (Business API), in
 app.post('/whatsapp/messages', async (req, res) => { ... });
 ```
 
+### Ejecutar en el servidor desde root para que quede operativo como parte de `pm2`
+
+```bash
+runuser -l motion -c 'pm2 start /usr/src/node/whatsapp/index.js --name "Open-Whatsapp"'
+```
+
+
 ### ✅ Si el mensaje recibido es un Flow:
 - Se identifica con `interactive.type === 'nfm_reply'`.
 - Se extrae `response_json` y se parsea para obtener:
