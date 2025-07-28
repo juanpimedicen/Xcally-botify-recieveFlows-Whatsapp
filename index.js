@@ -2,10 +2,17 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+
 const app = express();
 const PORT = 3434;
 const LOG_FILE_PATH = path.join(__dirname, 'flow_log.json');
 const VERIFY_TOKEN = 'vKNBCwMlL53EHYi2vltgWaW3eqNYT85r';
+
+const VIDEO_PATH = '/usr/src/node/whatsapp/saludo.mp4';
+const VIDEO_MIME_TYPE = 'video/mp4';
+let currentMediaId = '1823635935221587'; // media_id actual en uso
+
+const FormData = require('form-data');
 
 app.use(express.json());
 
@@ -142,6 +149,176 @@ app.post("/botifyJSONner", (req, res) => {
     console.log(req.body.clientData)
     res.set('Content-Type', 'application/json').send(JSON.parse(req.body.clientData));
 })
+
+// Enviar el video de saludo
+app.post('/enviar-video', async (req, res) => {
+    const telefono = req.body?.telefono;
+    const archivoVideo = '/usr/src/node/whatsapp/saludo.mp4';
+    const mediaTxt = '/usr/src/node/whatsapp/media_saludo_id.txt';
+    const caption = "¡Hola! Soy *Clara POS*, tu asistente virtual de Banco Plaza, y es un gusto saludarte.";
+
+    if (!telefono) {
+        return res.status(400).send({ error: 'Debes enviar el campo "telefono" en el body.' });
+    }
+
+    let mediaId = null;
+
+    // Intentar leer el media_id previamente guardado
+    if (fs.existsSync(mediaTxt)) {
+        try {
+            mediaId = fs.readFileSync(mediaTxt, 'utf-8').trim();
+            // Validar si aún es válido
+            const check = await axios.get(`https://graph.facebook.com/v18.0/${mediaId}`, {
+                headers: {
+                    Authorization: `Bearer EAAHFc9M0dvsBOzwn5He8N9dMNgCMTDwmN954qsaQozB4PBGZAc4fDuUwO288Cv14VYLfy7hNrh5fyxkZCgT164p4LGPDZCh76kySnebcZAvCCgfLAlr6NlpSZBVlpIko5YdstYCJaIY37c0EKOPC4QK4ucZBfDzzxSXoZC7wIUPAMQnTtRGV3z0mY91bMAavzdd3wZDZD`
+                }
+            });
+        } catch {
+            mediaId = null;
+        }
+    }
+
+    // Si no hay media válido, subir el archivo
+    if (!mediaId) {
+        try {
+            const form = new FormData();
+            form.append('file', fs.createReadStream(archivoVideo), {
+                contentType: 'video/mp4'
+            });
+            form.append('messaging_product', 'whatsapp');
+
+            const upload = await axios.post(
+                'https://graph.facebook.com/v18.0/121618807517432/media',
+                form,
+                {
+                    headers: {
+                        Authorization: `Bearer EAAHFc9M0dvsBOzwn5He8N9dMNgCMTDwmN954qsaQozB4PBGZAc4fDuUwO288Cv14VYLfy7hNrh5fyxkZCgT164p4LGPDZCh76kySnebcZAvCCgfLAlr6NlpSZBVlpIko5YdstYCJaIY37c0EKOPC4QK4ucZBfDzzxSXoZC7wIUPAMQnTtRGV3z0mY91bMAavzdd3wZDZD`,
+                        ...form.getHeaders()
+                    }
+                }
+            );
+
+            mediaId = upload.data.id;
+            fs.writeFileSync(mediaTxt, mediaId);
+        } catch (err) {
+            console.error(`[${now()}] ❌ Error al subir saludo.mp4:\n`, err.response?.data || err.message);
+            return res.status(500).send({ error: 'Error al subir el video.' });
+        }
+    }
+
+    try {
+        const enviarVideo = await axios.post(
+            'https://graph.facebook.com/v18.0/121618807517432/messages',
+            {
+                messaging_product: 'whatsapp',
+                to: telefono,
+                type: 'video',
+                video: {
+                    id: mediaId,
+                    caption: caption
+                }
+            },
+            {
+                headers: {
+                    Authorization: `Bearer EAAHFc9M0dvsBOzwn5He8N9dMNgCMTDwmN954qsaQozB4PBGZAc4fDuUwO288Cv14VYLfy7hNrh5fyxkZCgT164p4LGPDZCh76kySnebcZAvCCgfLAlr6NlpSZBVlpIko5YdstYCJaIY37c0EKOPC4QK4ucZBfDzzxSXoZC7wIUPAMQnTtRGV3z0mY91bMAavzdd3wZDZD`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        res.status(200).send({
+            mensaje: '✅ Video de saludo enviado correctamente',
+            id: enviarVideo.data.messages?.[0]?.id || null
+        });
+    } catch (error) {
+        console.error(`[${now()}] ❌ Error al enviar video de saludo:\n`, error.response?.data || error.message);
+        res.status(500).send({ error: 'No se pudo enviar el video' });
+    }
+});
+
+// Enviar video despido
+app.post('/enviar-video-despido', async (req, res) => {
+    const telefono = req.body?.telefono;
+    const videoPath = '/usr/src/node/whatsapp/despido.mp4';
+    const caption = "¡Gracias por usar nuestros servicios! Siempre estamos listos para ayudarte, si tienes más preguntas no dudes en contactarnos. En Banco Plaza, ¡tu cuentas!";
+    const pageId = "121618807517432";
+    const accessToken = "EAAHFc9M0dvsBOzwn5He8N9dMNgCMTDwmN954qsaQozB4PBGZAc4fDuUwO288Cv14VYLfy7hNrh5fyxkZCgT164p4LGPDZCh76kySnebcZAvCCgfLAlr6NlpSZBVlpIko5YdstYCJaIY37c0EKOPC4QK4ucZBfDzzxSXoZC7wIUPAMQnTtRGV3z0mY91bMAavzdd3wZDZD";
+
+    let mediaId = null;
+
+    // Paso 1: Revisar si ya existe un media_id guardado localmente
+    const MEDIA_TRACK_FILE = path.join(__dirname, 'media_despido_id.txt');
+    if (fs.existsSync(MEDIA_TRACK_FILE)) {
+        const idGuardado = fs.readFileSync(MEDIA_TRACK_FILE, 'utf-8');
+        try {
+            const check = await axios.get(`https://graph.facebook.com/v18.0/${idGuardado}`, {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`
+                }
+            });
+            mediaId = check.data?.id;
+        } catch (err) {
+            console.warn(`[${now()}] ⚠️ Media ID de despido vencido o inválido, subiendo de nuevo...`);
+        }
+    }
+
+    // Paso 2: Si no hay mediaId válido, subir el video
+    if (!mediaId) {
+        try {
+            const form = new (require('form-data'))();
+            form.append('file', fs.createReadStream(videoPath), { contentType: 'video/mp4' });
+            form.append('messaging_product', 'whatsapp');
+
+            const upload = await axios.post(
+                `https://graph.facebook.com/v18.0/${pageId}/media`,
+                form,
+                {
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        ...form.getHeaders()
+                    }
+                }
+            );
+            mediaId = upload.data.id;
+            fs.writeFileSync(MEDIA_TRACK_FILE, mediaId);
+            console.log(`[${now()}] ✅ Video de despido subido, media_id: ${mediaId}`);
+        } catch (err) {
+            console.error(`[${now()}] ❌ Error al subir video de despido:`, err.response?.data || err.message);
+            return res.status(500).send({ error: 'No se pudo subir el video de despido' });
+        }
+    }
+
+    // Paso 3: Enviar el video con mediaId
+    try {
+        const enviar = await axios.post(
+            `https://graph.facebook.com/v18.0/${pageId}/messages`,
+            {
+                messaging_product: "whatsapp",
+                to: telefono,
+                type: "video",
+                video: {
+                    id: mediaId,
+                    caption: caption
+                }
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        res.status(200).send({
+            mensaje: '✅ Video de despedida enviado correctamente',
+            id: enviar.data.messages?.[0]?.id || null
+        });
+    } catch (err) {
+        console.error(`[${now()}] ❌ Error al enviar video de despedida:\n`, err.response?.data || err.message);
+        res.status(500).send({ error: 'No se pudo enviar el video de despedida' });
+    }
+});
+
 
 function guardarEnLog(datos) {
     let contenido = [];
