@@ -257,6 +257,7 @@ Este bloque permite que todas las peticiones entrantes a `https://cx.oltpsys.com
 - Si ves errores tipo `EACCES`, ejecuta:
 ```bash
 sudo chmod 777 /usr/src/node/whatsapp
+sudo chown -R motion:motion /usr/src/node/whatsapp
 ```
 
 ---
