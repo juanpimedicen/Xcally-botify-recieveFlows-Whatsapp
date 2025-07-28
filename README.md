@@ -1,6 +1,6 @@
 # 📬 WhatsApp Flow Webhook Handler
 
-Este proyecto permite recibir y reenviar mensajes de WhatsApp (Business API), incluyendo respuestas interactivas de tipo *Flow* (usualmente generadas por formularios dinámicos), hacia un endpoint central de procesamiento. También guarda un log de las respuestas Flow parseadas.
+Este proyecto es un servidor Express que actúa como intermediario para manejar flujos automatizados y envíos de videos por WhatsApp usando la API de Meta, permite recibir y reenviar mensajes de WhatsApp (Business API), incluyendo respuestas interactivas de tipo *Flow* (usualmente generadas por formularios dinámicos), hacia un endpoint central de procesamiento. También guarda un log de las respuestas Flow parseadas.
 
 ---
 
@@ -12,14 +12,106 @@ Este proyecto permite recibir y reenviar mensajes de WhatsApp (Business API), in
 - Si es un Flow, **parsea los datos, los guarda en un log JSON y los reenvía en formato estructurado**.
 - Si es un mensaje estándar, simplemente lo reenvía tal cual.
 - Todo esto se reenvía al sistema central `https://cx.oltpsys.com`.
+- Guardar datos estructurados en un log
+- Reenviar confirmaciones
+- Enviar videos pregrabados como mensajes automáticos (saludo o despedida)
+- Administrar eficientemente los `media_id` de Facebook para no recargar archivos innecesariamente
 
 ---
 
-## 🔧 Estructura y funcionamiento del `index.js`
-
+## 🔧 Estructura y funcionamiento del `index.js` y endpoints disponibles
+### 1. `POST /whatsapp/messages`
+- **Función**: Recibe mensajes de WhatsApp, determina si es una respuesta a un flujo (`flow`) o un mensaje normal.
+- **Comportamiento**:
+  - Si es respuesta de un flow (formulario interactivo), extrae los campos (nombre, RIF, teléfono, correo) y los guarda en un log (`flow_log.json`)
+  - Reenvía ese mensaje a otro servidor (`https://cx.oltpsys.com/whatsapp/messages`) como confirmación.
+  - Si no es un formulario, reenvía el mensaje al endpoint de notificaciones estándar del sistema OLTP.
 ```js
 app.post('/whatsapp/messages', async (req, res) => { ... });
 ```
+---
+
+### 2. `GET /whatsapp/messages`
+- **Función**: Verificación del webhook con token.
+- **Uso**: Necesario para que WhatsApp valide que este servidor puede recibir mensajes.
+- **Parámetros**:
+  - `hub.mode=subscribe`
+  - `hub.verify_token=vKNBCwMlL53EHYi2vltgWaW3eqNYT85r`
+  - `hub.challenge=XYZ`
+```js
+app.get('/whatsapp/messages', (req, res) => { ... });
+```
+
+---
+
+### 3. `POST /enviar-video`
+- **Función**: Envía un video de **saludo** por WhatsApp al número indicado.
+- **Body esperado**:
+```json
+{
+  "telefono": "+584120941727"
+}
+```
+- **Comportamiento**:
+  - Verifica si ya existe un `media_id` válido guardado en `media_saludo_id.txt`
+  - Si no existe o ha expirado, lo sube a Facebook Graph API y guarda el nuevo ID
+  - Luego lo envía al número especificado con el caption:
+    > ¡Hola! Soy *Clara POS*, tu asistente virtual de Banco Plaza, y es un gusto saludarte.
+```js
+app.post('/enviar-video', async (req, res) => { ... });
+```
+
+---
+
+### 4. `POST /enviar-video-despido`
+- **Función**: Envía un video de **despedida** por WhatsApp al número indicado.
+- **Body esperado**:
+```json
+{
+  "telefono": "+584120941727"
+}
+```
+- **Comportamiento**:
+  - Verifica si ya existe un `media_id` válido en `media_despido_id.txt`
+  - Si no existe o ha caducado, lo sube a Facebook Graph API y guarda el nuevo ID
+  - Luego lo envía al número especificado con el caption:
+    > ¡Gracias por usar nuestros servicios! Siempre estamos listos para ayudarte, si tienes más preguntas no dudes en contactarnos. En Banco Plaza, ¡tu cuentas!
+```js
+app.post('/enviar-video-despido', async (req, res) => { ... });
+```
+
+---
+### 5. `POST /botifyJSONner`
+- **Función**: Este endpoint permite que **Botify** pueda leer y devolver directamente al usuario lo que se responde a través de una plantilla.
+- **Body esperado**:
+```json
+{
+  "clientData": "{{DATOS}}"
+}
+```
+
+- **Comportamiento**:
+  - Recibe un string JSON dentro del campo `clientData`.
+  - Lo convierte en objeto y lo devuelve como respuesta en formato `application/json`, de forma que **Botify lo interprete como un mensaje válido de respuesta.**
+  - Utiliza el valor que se pasó a `{{DATOS}}` y lo estructura como un JSON real en la respuesta.
+
+```js
+app.post("/botifyJSONner", (req, res) => {
+    console.log(req.body.clientData);
+    res.set('Content-Type', 'application/json').send(JSON.parse(req.body.clientData));
+});
+```
+
+- **Ejemplo de uso**:
+```json
+{
+  "clientData": "{\"nombre\":\"Pedro\",\"rif\":\"J123456789\",\"telefono\":\"+584140000000\",\"correo\":\"pedro@correo.com\"}"
+}
+```
+
+> Esto permitirá que plataformas como Botify lean correctamente el contenido enviado por WhatsApp y lo muestren como mensaje dinámico y personalizado al usuario.
+
+---
 
 ### Ejecutar en el servidor desde root para que quede operativo como parte de `pm2`
 
@@ -144,8 +236,31 @@ Este bloque permite que todas las peticiones entrantes a `https://cx.oltpsys.com
 - Un dominio HTTPS válido
 - Certificado SSL si usas HTTPS
 - API de WhatsApp Business activada y webhook configurado con `https://cx.oltpsys.com/whatsapp/messages`
+- Variables ajustadas dentro del código (token, ID de página, rutas a los videos, etc.)
+- Archivos de video ubicados en:
+  - `/usr/src/node/whatsapp/saludo.mp4`
+  - `/usr/src/node/whatsapp/despido.mp4`
+  - 
+---
+
+## 🗃 Archivos importantes
+
+- `media_saludo_id.txt`: Contiene el `media_id` actual para el video de saludo, para evitar subirlo múltiples veces a Facebook.
+- `media_despido_id.txt`: Lo mismo, pero para el video de despedida.
+- `flow_log.json`: Registra las respuestas a formularios de usuarios, incluyendo nombre, RIF, correo y número telefónico.
 
 ---
+
+## ⚠️ Permisos y errores comunes
+
+- Asegúrate de que el proceso de Node.js tiene permisos de escritura sobre el directorio `/usr/src/node/whatsapp/` para poder crear o escribir los archivos `media_*.txt`.
+- Si ves errores tipo `EACCES`, ejecuta:
+```bash
+sudo chmod 777 /usr/src/node/whatsapp
+```
+
+---
+
 
 ## ▶️ Cómo ejecutar
 
@@ -159,6 +274,22 @@ runuser -l motion -c 'node /usr/src/node/whatsapp/index.js'
 ```
 
 El servidor quedará escuchando en `http://localhost:3434/whatsapp/messages`.
+
+### ✅ Ejemplos de uso para enviar videos
+
+### Enviar saludo:
+```bash
+curl -X POST http://localhost:3434/enviar-video \
+-H "Content-Type: application/json" \
+-d '{"telefono":"+584120941727"}'
+```
+
+### Enviar despedida:
+```bash
+curl -X POST http://localhost:3434/enviar-video-despido \
+-H "Content-Type: application/json" \
+-d '{"telefono":"+584120941727"}'
+```
 
 ---
 ## 📁 Logs
@@ -187,7 +318,7 @@ Formato:
 - El reenvío de mensajes respeta el mismo formato que WhatsApp envía originalmente.
 - Si el JSON del Flow está mal formado, se atrapa con un try/catch para evitar caídas del servidor.
 ---
-##🛟 ¿Preguntas?
+## 🛟 ¿Preguntas?
 Puedes escribir por WhatsApp al +584126532271 o revisar los logs para confirmar que el servidor está reenviando correctamente los mensajes al sistema `OLTPSYS`.
 
 ```arduino
@@ -198,4 +329,7 @@ Puedes escribir por WhatsApp al +584126532271 o revisar los logs para confirmar 
 ## 🤝 Créditos
 
 Desarrollado para integraciones avanzadas entre WhatsApp Business y plataformas tipo Botify.
+
+Juan Guilarte
+2025
 
