@@ -64,7 +64,7 @@ const config = {
     ACCESS_TOKEN: 'TU_ACCESS_TOKEN_DE_LA_API_DE_META',
     // ... y más variables.
 };
-
+```
 ## 🚀 ¿Qué hace este webhook?
 El principal objetivo de este webhook es servir como un puente entre la API de WhatsApp Cloud y la API de Botify de Xcally. Cuando un usuario completa un Flow en WhatsApp, la respuesta llega en un formato JSON complejo. Este webhook extrae la información relevante, la estructura y la envía al endpoint de Botify preparado para recibirla.
 
