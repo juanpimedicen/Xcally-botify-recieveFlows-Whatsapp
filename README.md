@@ -15,7 +15,7 @@ Este proyecto es un servidor Express que actúa como intermediario para manejar 
 - Guardar datos estructurados en un log
 - Reenviar confirmaciones
 - Enviar videos pregrabados como mensajes automáticos (saludo o despedida)
-- Administrar eficientemente los `media_id` de Facebook para no recargar archivos innecesariamente
+- Administrar eficientemente los `media_id` de Facebook para no recargar archivos innecesariamente, al momento de enviar videos de saludo y despido
 
 ---
 
