@@ -1,6 +1,6 @@
 # Guía de Configuración para una Nueva Cuenta de WhatsApp
 
-Esta guía explica cómo configurar una segunda instancia de la aplicación para manejar una nueva cuenta de WhatsApp en el mismo servidor. El método consiste en duplicar el proyecto y ejecutarlo como un proceso separado con su propia configuración.
+Esta guía explica cómo configurar una segunda instancia de la aplicación para manejar una nueva cuenta de WhatsApp en el mismo servidor. El método consiste en duplicar el proyecto y ejecutarlo como un proceso separado, robusto y gestionado por PM2.
 
 **Prerrequisitos:**
 * Tener la primera instancia de la aplicación ya instalada y funcionando correctamente.
@@ -9,9 +9,9 @@ Esta guía explica cómo configurar una segunda instancia de la aplicación para
 
 ---
 
-### Paso 1: Duplicar la Carpeta del Proyecto
+### Paso 1: Duplicar el Proyecto
 
-Vamos a crear una copia de la aplicación para la nueva cuenta. Usaremos `whatsapp2` como el nombre para la nueva carpeta.
+Vamos a crear una copia aislada de la aplicación para la nueva cuenta. Usaremos `whatsapp2` como el nombre para la nueva carpeta.
 
 ```bash
 # Navega al directorio donde está tu proyecto original
@@ -21,27 +21,27 @@ cd /usr/src/scripts/node/
 cp -r whatsapp whatsapp2
 ```
 
-### Paso 2: Preparar la Nueva Carpeta
+### Paso 2: Preparar y Configurar el Proyecto
 
-Ingresa a la nueva carpeta y elimina los archivos de log y de `media_id` de la instancia anterior para evitar conflictos y empezar de cero.
+Ahora vamos a inicializar el nuevo proyecto, instalar sus dependencias y limpiar los archivos de la instancia anterior.
 
 ```bash
+# Ingresa a la nueva carpeta del proyecto
 cd whatsapp2
+
+# Limpia los archivos de log y media_id anteriores para empezar de cero
 rm -f flow_log.json media_*.txt
-```
 
-### Paso 3: Instalar Dependencias
+# Crea un archivo package.json con valores por defecto
+npm init -y
 
-Asegúrate de que la nueva carpeta tenga todos los paquetes de Node necesarios.
-
-```bash
+# Instala los paquetes de Node necesarios para este proyecto
 npm install express axios form-data
 ```
-Esto creará una nueva carpeta `node_modules` dentro de `whatsapp2`.
 
-### Paso 4: Configurar `index.js` para la Nueva Cuenta
+### Paso 3: Configurar el `index.js` para la Nueva Cuenta
 
-Este es el paso más importante. Abre el archivo `index.js` de la nueva aplicación y modifica el objeto `config` con los datos de tu nueva cuenta.
+Este es el paso de configuración principal. Abre el archivo `index.js` de la nueva aplicación para modificar el objeto `config` con los datos de tu nueva cuenta.
 
 ```bash
 nano /usr/src/scripts/node/whatsapp2/index.js
@@ -82,37 +82,64 @@ const config = {
 };
 ```
 
+> **Prueba 1: Verificar el script `index.js`**
+> Antes de continuar, vamos a asegurarnos de que el script se ejecuta sin errores.
+> ```bash
+> # Desde la carpeta /usr/src/scripts/node/whatsapp2/
+> node index.js
+> ```
+> Deberías ver el mensaje: `🚀 Servidor escuchando en http://localhost:3444`. Si ves esto, detén el proceso con `Ctrl+C`. Si hay errores, revísalos antes de continuar.
+
+### Paso 4: Crear el Archivo de Ecosistema para PM2
+
+Para una mejor gestión, crearemos un archivo `ecosystem.config.js`. Esto le dice a PM2 exactamente cómo debe correr nuestra aplicación, incluyendo el directorio de trabajo (`cwd`).
+
+1.  Crea el archivo en la carpeta `whatsapp2`:
+    ```bash
+    nano /usr/src/scripts/node/whatsapp2/ecosystem.config.js
+    ```
+2.  Pega el siguiente contenido:
+    ```javascript
+    module.exports = {
+      apps : [{
+        name   : "flow-whatsapp2",
+        script : "index.js",
+        cwd    : "/usr/src/scripts/node/whatsapp2/",
+        watch  : true,
+      }]
+    }
+    ```
+
 ### Paso 5: Configurar NGINX para el Nuevo Endpoint
 
-Ahora, debemos decirle a NGINX que el tráfico que llegue a un nuevo endpoint (ej. `/whatsapp/messages2`) debe ser redirigido al nuevo puerto que configuramos (`3444`).
+Ahora, debemos decirle a NGINX que el tráfico que llegue a un nuevo endpoint (ej. `/whatsapp/messages2`) debe ser redirigido al nuevo puerto (`3444`).
 
 1.  Abre tu archivo de configuración de NGINX:
     ```bash
     nano /etc/nginx/conf.d/motion.conf
     ```
-2.  Busca el bloque `location /whatsapp/messages { ... }` existente. Cópialo y pégalo justo debajo, creando un bloque duplicado.
-3.  Modifica el bloque duplicado para que apunte al nuevo endpoint y al nuevo puerto.
+2.  Copia el bloque `location /whatsapp/messages { ... }` existente y pégalo justo debajo.
+3.  Modifica el bloque duplicado para que apunte al nuevo endpoint y puerto.
 
-```nginx
-# Endpoint para la CUENTA 2
-location /whatsapp/messages2 {
-    # El proxy_pass ahora apunta al puerto 3444, pero la ruta interna sigue siendo la misma
-    proxy_pass [http://127.0.0.1:3444/whatsapp/messages](http://127.0.0.1:3444/whatsapp/messages);
+    ```nginx
+    # Endpoint para la CUENTA 2
+    location /whatsapp/messages2 {
+        # El proxy_pass ahora apunta al puerto 3444, pero la ruta interna sigue siendo la misma
+        proxy_pass [http://12.0.0.1:3444/whatsapp/messages](http://12.0.0.1:3444/whatsapp/messages);
+        
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-
-    # Cambia los nombres de los archivos de log para esta cuenta
-    access_log /var/log/nginx/whatsapp2_access.log;
-    error_log /var/log/nginx/whatsapp2_error.log;
-}
-```
-
+        # Cambia los nombres de los archivos de log para esta cuenta
+        access_log /var/log/nginx/whatsapp2_access.log;
+        error_log /var/log/nginx/whatsapp2_error.log;
+    }
+    ```
 4.  Guarda el archivo, verifica la sintaxis de NGINX y recarga el servicio:
     ```bash
     nginx -t
@@ -120,23 +147,61 @@ location /whatsapp/messages2 {
     systemctl reload nginx
     ```
 
+> **Prueba 2: Verificar el endpoint de NGINX con el desafío (curl)**
+> Ahora que la app está lista (aunque no corriendo) y NGINX está configurado, vamos a lanzar la app manualmente y probar el endpoint desde fuera.
+> 1. En una terminal, inicia la app: `cd /usr/src/scripts/node/whatsapp2/ && node index.js`
+> 2. En **otra terminal**, ejecuta el `curl` al nuevo endpoint usando el **nuevo token de verificación**:
+> ```bash
+> # Reemplaza NUEVO_VERIFY_TOKEN_DE_LA_CUENTA_2 con el valor real
+> curl -X GET '[https://serviciosxcally.bancoplaza.com/whatsapp/messages2?hub.mode=subscribe&hub.verify_token=NUEVO_VERIFY_TOKEN_DE_LA_CUENTA_2&hub.challenge=PruebaCuenta2](https://serviciosxcally.bancoplaza.com/whatsapp/messages2?hub.mode=subscribe&hub.verify_token=NUEVO_VERIFY_TOKEN_DE_LA_CUENTA_2&hub.challenge=PruebaCuenta2)'
+> ```
+> Deberías recibir como respuesta `PruebaCuenta2`. Si funciona, detén la app (`Ctrl+C`) en la primera terminal.
+
 ### Paso 6: Iniciar la Nueva Aplicación con PM2
 
-Finalmente, inicia la segunda aplicación como un nuevo proceso en PM2, asegurándote de darle un nombre único.
+Con todas las pruebas superadas, es hora de dejar que PM2 gestione la aplicación.
 
-1.  Ejecuta el comando de inicio usando `runuser` como hiciste con la primera aplicación:
+1.  Usa el nuevo `ecosystem.config.js` para iniciar el proceso a través del usuario `motion`:
     ```bash
-    runuser -l motion -c 'pm2 start /usr/src/scripts/node/whatsapp2/index.js --name "flow-whatsapp2" --watch'
+    runuser -l motion -c 'pm2 start /usr/src/scripts/node/whatsapp2/ecosystem.config.js'
     ```
-2.  Verifica que ambos procesos estén corriendo:
+2.  Verifica que ambos procesos (`flow-whatsapp` y `flow-whatsapp2`) estén en línea:
     ```bash
     runuser -l motion -c 'pm2 list'
     ```
-    Deberías ver `flow-whatsapp` y `flow-whatsapp2` en la lista.
+> **Prueba 3: Observar los logs en PM2**
+> Puedes ver los logs en tiempo real de la nueva aplicación para asegurarte de que todo funciona como se espera.
+> ```bash
+> runuser -l motion -c 'pm2 logs flow-whatsapp2'
+> ```
 
-3.  Guarda la nueva lista de procesos de PM2 para que ambas aplicaciones se inicien automáticamente si el servidor se reinicia:
+### Paso 7: Asegurar la Persistencia tras Reinicios
+
+Para garantizar que PM2 inicie **ambas** aplicaciones si el servidor se reinicia, debes guardar la nueva lista de procesos.
+
+1.  **Guardar la lista de procesos actual:**
     ```bash
     runuser -l motion -c 'pm2 save'
     ```
+2.  **Configurar el inicio automático (si no lo has hecho antes):**
+    Este comando se ejecuta una sola vez como `root` en el servidor para crear el servicio de inicio. Si ya lo hiciste para la primera app, no necesitas repetirlo.
+    ```bash
+    # Ejecutar solo si es la primera vez que configuras la persistencia en este servidor
+    pm2 startup
+    # Sigue las instrucciones que te devuelva el comando (copiar y pegar una línea)
+    ```
 
-¡Listo! Ahora tienes dos instancias independientes de la aplicación, cada una manejando una cuenta de WhatsApp diferente a través de su propio endpoint (`/whatsapp/messages` y `/whatsapp/messages2`).
+### Paso 8: Gestionar la Versión de la Aplicación (Opcional)
+
+Si quieres llevar un control de versiones para esta segunda aplicación, puedes usar `npm version`.
+
+1.  Navega al directorio del proyecto:
+    ```bash
+    cd /usr/src/scripts/node/whatsapp2/
+    ```
+2.  Después de realizar cambios en el código, incrementa la versión:
+    ```bash
+    # Para un cambio menor o corrección de bug
+    npm version patch
+    ```
+PM2, al estar en modo `--watch`, detectará los cambios y reiniciará la aplicación `flow-whatsapp2` automáticamente. Puedes verificar la nueva versión con `runuser -l motion -c 'pm2 info flow-whatsapp2'`.
