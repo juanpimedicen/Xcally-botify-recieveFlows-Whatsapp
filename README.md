@@ -199,24 +199,35 @@ Es necesario redirigir el tráfico entrante desde el dominio público hacia el p
 
 ### Fragmento del bloque configurado:
 ```nginx
-location /whatsapp/messages/ {
-    proxy_pass http://127.0.0.1:3434;
+  # Whatsapp como Openchannel
+  location /whatsapp/messages {
+    proxy_pass http://127.0.0.1:3434/whatsapp/messages;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+
+   # Headers importantes para Meta
+    proxy_set_header X-Original-Host $host;
+    proxy_set_header X-Original-URI $request_uri;
 
     proxy_connect_timeout 600;
     proxy_send_timeout 600;
     proxy_read_timeout 600;
     send_timeout 600;
 
+    # websocket support
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 
     proxy_intercept_errors off;
-}
+
+    # Logging para debugging
+    access_log /var/log/nginx/whatsapp_access.log;
+    error_log /var/log/nginx/whatsapp_error.log;
+  }
+
 ```
 
 Este bloque permite que todas las peticiones entrantes a `https://cx.oltpsys.com/whatsapp/messages` se redirijan correctamente al webhook que corre en el servidor en el puerto 3434.
