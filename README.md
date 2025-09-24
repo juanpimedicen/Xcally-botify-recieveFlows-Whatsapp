@@ -1,10 +1,74 @@
-# 📬 WhatsApp Flow Webhook Handler
+# 📬 WhatsApp Flow Webhook Handler - Recibir Flows de WhatsApp
 
 Este proyecto es un servidor Express que actúa como intermediario para manejar flujos automatizados y envíos de videos por WhatsApp usando la API de Meta, permite recibir y reenviar mensajes de WhatsApp (Business API), incluyendo respuestas interactivas de tipo *Flow* (usualmente generadas por formularios dinámicos), hacia un endpoint central de procesamiento. También guarda un log de las respuestas Flow parseadas.
 
+Este es un webhook intermediario diseñado para recibir las respuestas de los "Flows" de WhatsApp, procesarlas y reenviarlas a un endpoint de Botify de Xcally. Adicionalmente, cuenta con endpoints para enviar videos de saludo y despedida.
 ---
 
+## Características
+
+- **Recepción de Webhooks de WhatsApp:** Valida y procesa los eventos de mensajes entrantes.
+- **Procesamiento de Flows:** Extrae específicamente las respuestas de los Flows interactivos (`nfm_reply`).
+- **Reenvío a Botify:** Formatea los datos del Flow y los reenvía a un endpoint configurable de Botify.
+- **Reenvío de Mensajes Estándar:** Reenvía todos los demás tipos de mensajes a otro endpoint de Botalla.
+- **Envío de Videos:** Incluye endpoints (`/enviar-video` y `/enviar-video-despido`) para enviar videos predefinidos a los usuarios.
+- **Gestión de `media_id`:** Sube los videos una vez y reutiliza el `media_id` para envíos posteriores, optimizando el rendimiento.
+- **Registro de Flows:** Guarda cada respuesta de Flow recibida en un archivo `flow_log.json`.
+
+## Instalación y Configuración
+
+1.  **Clonar el repositorio:**
+    ```bash
+    git clone [https://github.com/juanpimedicen/Xcally-botify-recieveFlows-Whatsapp.git](https://github.com/juanpimedicen/Xcally-botify-recieveFlows-Whatsapp.git)
+    cd Xcally-botify-recieveFlows-Whatsapp
+    ```
+2.  **Instalar dependencias:**
+    ```bash
+    npm install express axios form-data
+    ```
+3.  **Configurar `index.js`:**
+    Abre el archivo `index.js` y modifica el objeto `config` al principio del archivo con tus propios tokens, IDs, puertos y rutas.
+4.  **Iniciar con PM2:**
+    ```bash
+    pm2 start index.js --name "flow-whatsapp" --watch
+    ```
+5.  **Guardar configuración de PM2 para reinicios:**
+    ```bash
+    pm2 save
+    pm2 startup
+    ```
+
+### 🚀 Añadir una Segunda Cuenta de WhatsApp
+
+Este proyecto está diseñado para poder duplicarse y gestionar múltiples cuentas de WhatsApp en el mismo servidor, cada una con su propio endpoint, configuración y proceso.
+
+Para instrucciones detalladas sobre cómo configurar una segunda cuenta (o subsecuentes), consulta nuestra **[Guía de Configuración para una Nueva Cuenta](CONFIGURACION_NUEVA_CUENTA.md)**.
+
+## Endpoints Disponibles
+
+- `GET /whatsapp/messages`: Endpoint para la verificación inicial del webhook por parte de Meta.
+- `POST /whatsapp/messages`: Endpoint principal que recibe todas las notificaciones de WhatsApp.
+- `POST /enviar-video`: Envía un video de saludo a un número de teléfono especificado.
+- `POST /enviar-video-despido`: Envía un video de despedida a un número de teléfono especificado.
+
+## Estructura del Objeto de Configuración
+
+Todas las variables personalizables se encuentran en el objeto `config` al inicio de `index.js` para una fácil modificación.
+
+```javascript
+const config = {
+    PORT: 3443,
+    VERIFY_TOKEN: 'TU_VERIFY_TOKEN',
+    PHONE_NUMBER_ID: 'TU_PHONE_NUMBER_ID',
+    ACCOUNT_ID: 'TU_WHATSAPP_BUSINESS_ACCOUNT_ID',
+    ACCESS_TOKEN: 'TU_ACCESS_TOKEN_DE_LA_API_DE_META',
+    // ... y más variables.
+};
+
 ## 🚀 ¿Qué hace este webhook?
+El principal objetivo de este webhook es servir como un puente entre la API de WhatsApp Cloud y la API de Botify de Xcally. Cuando un usuario completa un Flow en WhatsApp, la respuesta llega en un formato JSON complejo. Este webhook extrae la información relevante, la estructura y la envía al endpoint de Botify preparado para recibirla.
+
+Para los mensajes que no son respuestas de un Flow, el webhook simplemente los reenvía a un endpoint de notificación de Botalla, asegurando que no se pierda ninguna interacción.
 
 - Verifica el token para conectar con el webhook de WhatsApp.
 - Escucha mensajes entrantes en la ruta `/whatsapp/messages`.
